@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using backEndTestTask.Attributes;
 using backEndTestTask.Exceptions;
@@ -14,6 +13,7 @@ namespace backEndTestTask.Services
 {
     public class ImagesThirdPartyService : IImagesThirdPartyService
     {
+        private const string ImagesKey = "images";
         private readonly IClient client;
         private readonly IMemoryCache memoryCache;
         private readonly ImagesThirdPartySetting imagesThirdPartySetting;
@@ -29,8 +29,9 @@ namespace backEndTestTask.Services
 
         public async Task<Images> GetById(string id)
         {
-            var result = await InvokeTokenWrapper(async (token) => await GetByIdInternal(id, token));
-            return (Images)result;
+            var result = (Images)(await InvokeTokenWrapper(async (token) => await GetByIdInternal(id, token)));
+            AddToCacheForSearch(result);
+            return result;
         }
 
         public async Task<ImagesPage> GetByPage(int? page)
@@ -42,7 +43,7 @@ namespace backEndTestTask.Services
         public List<Images> SearchInCache(string filter)
         {
             var result = new List<Images>();
-            if (memoryCache.TryGetValue("images", out object imagesObject))
+            if (memoryCache.TryGetValue(ImagesKey, out object imagesObject))
             {
                 var image = (List<Images>)imagesObject;
                 var propsToSearch = GetPropertiesToSearch();
@@ -133,6 +134,29 @@ namespace backEndTestTask.Services
             var tokenModel = await client.PostDataAsJsonAsync<TokenModel>($"{imagesThirdPartySetting.Url}/auth", new { apiKey = imagesThirdPartySetting.ApiKey });
             token = tokenModel.Token;
             return token;
+        }
+
+        private void AddToCacheForSearch(Images image)
+        {
+            if (memoryCache.TryGetValue(ImagesKey, out object imagesObject))
+            {
+                var images = (List<Images>)imagesObject;
+
+                var foundImage = images.Find(i => i.Id == image.Id);
+                if (foundImage != null)
+                {
+                    foundImage = image;
+                }
+                else
+                {
+                    images.Add(image);
+                }
+                SetInCache(ImagesKey, images);
+            }
+            else
+            {
+                SetInCache(ImagesKey, new List<Images> { image });
+            }
         }
     }
 }
